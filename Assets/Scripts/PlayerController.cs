@@ -53,15 +53,17 @@ public class PlayerController : NetworkBehaviour
     }
 
     [ServerRpc]
+
+    
     public void SetTeamServerRpc(bool isRedTeam)
     {
-        // 1. Pozisyonları Belirle
         Vector3 spawnPos;
         Quaternion spawnRot;
 
         if (isRedTeam)
         {
             playerColor.Value = Color.red;
+            // Kırmızı Takım: Kalenin önü
             spawnPos = new Vector3(-25f, 2f, 0f);
             spawnRot = Quaternion.Euler(0, 90, 0);
             currentRotationY = 90f;
@@ -69,20 +71,23 @@ public class PlayerController : NetworkBehaviour
         else
         {
             playerColor.Value = Color.blue;
-            spawnPos = new Vector3(25f, 2f, 0f); // Mavi tarafı
+            // MAVİ TAKIM DÜZELTME: Kırmızı ile aynı mesafede, diğer kalede spawn olur.
+            // Eğer hala çok uzak geliyorsa 25f değerini 15f yaparak kaleye yaklaştırabilirsin.
+            spawnPos = new Vector3(25f, 2f, 0f);
             spawnRot = Quaternion.Euler(0, -90, 0);
             currentRotationY = -90f;
         }
 
-        // Bu değerleri kaydet (Gol yiyince buraya döneceğiz)
         initialPosition = spawnPos;
         initialRotation = spawnRot;
 
-        // 2. Işınlama Operasyonu (Host sorununu çözen kısım)
+        // Fiziksel yer değiştirme
         TeleportPlayer(spawnPos, spawnRot);
 
-        EnableMovementClientRpc();
+        // Hareket izni ve rotasyon verisini gönder
+        EnableMovementClientRpc(currentRotationY);
     }
+
 
     // Gol olunca çağrılacak fonksiyon
     public void ResetPosition()
@@ -117,11 +122,13 @@ public class PlayerController : NetworkBehaviour
     }
 
     [ClientRpc]
-    private void EnableMovementClientRpc()
+   
+    private void EnableMovementClientRpc(float startingRotationY)
     {
         if (IsOwner)
         {
             canMove = true;
+            currentRotationY = startingRotationY; // Kameranın doğru yöne bakmasını sağlar
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
             currentVerticalRotation = 0f;
