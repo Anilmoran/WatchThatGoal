@@ -1,6 +1,7 @@
 using UnityEngine;
 using Unity.Netcode;
 using TMPro;
+using System.Collections;
 
 public class TeamUIManager : MonoBehaviour
 {
@@ -20,18 +21,25 @@ public class TeamUIManager : MonoBehaviour
 
     public void SelectRedTeam()
     {
-        SelectTeam(true); // Kýrmýzý
+        StartCoroutine(EnsurePlayerAndSelect(true));
     }
 
     public void SelectBlueTeam()
     {
-        // DÜZELTÝLDÝ: Burasý eskiden true idi, þimdi false oldu.
-        SelectTeam(false); // Mavi
+        StartCoroutine(EnsurePlayerAndSelect(false));
     }
 
-    private void SelectTeam(bool isRed)
+    private IEnumerator EnsurePlayerAndSelect(bool isRed)
     {
-        if (NetworkManager.Singleton.LocalClient != null && NetworkManager.Singleton.LocalClient.PlayerObject != null)
+        // Oyuncu objesi spawn olana kadar bekle
+        float timeout = 2f;
+        while (NetworkManager.Singleton.LocalClient?.PlayerObject == null && timeout > 0)
+        {
+            timeout -= Time.deltaTime;
+            yield return null;
+        }
+
+        if (NetworkManager.Singleton.LocalClient?.PlayerObject != null)
         {
             var localPlayer = NetworkManager.Singleton.LocalClient.PlayerObject;
             localPlayer.GetComponent<PlayerController>().SetTeamServerRpc(isRed);
@@ -43,7 +51,7 @@ public class TeamUIManager : MonoBehaviour
         }
         else
         {
-            Debug.LogError("Oyuncu objesi bulunamadý! Baðlantý kopmuþ olabilir.");
+            Debug.LogError("Oyuncu objesi bulunamadý! Sahne yüklenememiþ olabilir.");
         }
     }
 }

@@ -1,70 +1,108 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+using System.Threading.Tasks;
 using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
 using Unity.Services.Core;
 using Unity.Services.Authentication;
 using Unity.Services.Relay;
 using Unity.Services.Relay.Models;
-using Unity.Netcode.Transports.UTP;
-using Unity.Networking.Transport.Relay;
+using UnityEngine;
 using TMPro;
 
 public class RelayManager : MonoBehaviour
 {
-    public static string CurrentJoinCode = "---";
-    public TMP_InputField codeInput;
+    public static string CurrentJoinCode { get; private set; }
+    private const int MaxPlayers = 4;
 
-    public void JoinGameByButton()
-    {
-        string code = codeInput.text;
-        if (string.IsNullOrEmpty(code)) { Debug.LogWarning("Kod alaný boþ!"); return; }
-        JoinRelay(code.Trim());
-    }
+    [Header("UI Ayarlarý")]
+    public TMP_InputField joinCodeInputField;
 
-    public async void CreateRelay()
+    async void Start()
     {
         try
         {
-            if (NetworkManager.Singleton.IsListening) NetworkManager.Singleton.Shutdown();
-
-            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(3);
-            string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
-
-            CurrentJoinCode = joinCode;
-            Debug.Log("Oda Kodu: " + joinCode);
-
-            RelayServerData relayServerData = new RelayServerData(allocation, "dtls");
-            NetworkManager.Singleton.GetComponent<UnityTransport>().SetRelayServerData(relayServerData);
-
-            NetworkManager.Singleton.StartHost();
-            NetworkManager.Singleton.SceneManager.LoadScene("MatchGame", UnityEngine.SceneManagement.LoadSceneMode.Single);
+            await UnityServices.InitializeAsync();
+            if (!AuthenticationService.Instance.IsSignedIn)
+            {
+                await AuthenticationService.Instance.SignInAnonymouslyAsync();
+            }
         }
-        catch (RelayServiceException e) { Debug.LogError(e); }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Servis hatasý: " + e.Message);
+        }
+    }
+
+    public async void CreateRelayButton()
+    {
+        if (NetworkManager.Singleton.IsHost || NetworkManager.Singleton.IsClient) return;
+        await CreateRelay();
+    }
+
+    public async Task<string> CreateRelay()
+    {
+        try
+        {
+            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(MaxPlayers);
+            string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
+            CurrentJoinCode = joinCode;
+
+            NetworkManager.Singleton.GetComponent<UnityTransport>().SetHostRelayData(
+                allocation.RelayServer.IpV4,
+                (ushort)allocation.RelayServer.Port,
+                allocation.AllocationIdBytes,
+                allocation.Key,
+                allocation.ConnectionData
+            );
+
+            // Önce Host'u baþlatýyoruz
+            if (NetworkManager.Singleton.StartHost())
+            {
+                Debug.Log("Host Baþlatýldý. Kod: " + joinCode);
+
+                // Sahne yüklemesini bir kare sonra yapmasý için garantiye alýyoruz
+                // Sahne isminin "matchgame" olduðundan ve Build Settings'te olduðundan emin ol
+                NetworkManager.Singleton.SceneManager.LoadScene("matchgame", UnityEngine.SceneManagement.LoadSceneMode.Single);
+            }
+
+            return joinCode;
+        }
+        catch (RelayServiceException e)
+        {
+            Debug.LogError("Relay hatasý: " + e.Message);
+            return null;
+        }
     }
 
     public async void JoinRelay(string joinCode)
     {
+        joinCode = joinCode?.Trim();
+        if (string.IsNullOrEmpty(joinCode) || NetworkManager.Singleton.IsClient) return;
+
         try
         {
             CurrentJoinCode = joinCode;
-            if (NetworkManager.Singleton.IsListening) NetworkManager.Singleton.Shutdown();
-
             JoinAllocation joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
-            RelayServerData relayServerData = new RelayServerData(joinAllocation, "dtls");
 
-            NetworkManager.Singleton.GetComponent<UnityTransport>().SetRelayServerData(relayServerData);
+            NetworkManager.Singleton.GetComponent<UnityTransport>().SetClientRelayData(
+                joinAllocation.RelayServer.IpV4,
+                (ushort)joinAllocation.RelayServer.Port,
+                joinAllocation.AllocationIdBytes,
+                joinAllocation.Key,
+                joinAllocation.ConnectionData,
+                joinAllocation.HostConnectionData
+            );
+
             NetworkManager.Singleton.StartClient();
+            Debug.Log("Client baþlatýldý, sahne senkronizasyonu bekleniyor...");
         }
-        catch (RelayServiceException e) { Debug.LogError(e); }
+        catch (RelayServiceException e)
+        {
+            Debug.LogError("Katýlma hatasý: " + e.Message);
+        }
     }
 
-    private async void Start()
+    public void JoinRelayButton()
     {
-        await UnityServices.InitializeAsync();
-        if (!AuthenticationService.Instance.IsSignedIn)
-        {
-            await AuthenticationService.Instance.SignInAnonymouslyAsync();
-        }
+        if (joinCodeInputField != null) JoinRelay(joinCodeInputField.text);
     }
 }
