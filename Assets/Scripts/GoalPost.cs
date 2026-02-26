@@ -3,19 +3,24 @@ using Unity.Netcode;
 
 public class GoalPost : NetworkBehaviour
 {
-    // Bu kaleye gol girerse puaný kim kazanacak?
-    // Mavi Kaleye gol girerse -> Red kazanýr.
-    // Kýrmýzý Kaleye gol girerse -> Blue kazanýr.
+    // Inspector'a not düþtük: Sadece "Red" veya "Blue" yazýlmalý.
+    [Tooltip("Buraya sadece 'Red' veya 'Blue' yazýn.")]
     public string teamWhoScores;
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!IsServer) return; // Sadece sunucu golü iþler
+        if (!IsServer) return;
 
         if (other.CompareTag("Ball"))
         {
-            // Gol oldu!
-            Debug.Log("GOL! Skoru alan: " + teamWhoScores);
+            // Eðer boþ bir þey yazýldýysa uyarý ver
+            if (string.IsNullOrEmpty(teamWhoScores))
+            {
+                Debug.LogError("HATA: Bu kalenin GoalPost scriptinde takým ismi boþ býrakýlmýþ!");
+                return;
+            }
+
+            Debug.Log($"Top kaleye girdi! Puaný alacak takým: {teamWhoScores}");
             GameManager.Instance.GoalScored(teamWhoScores);
         }
     }
